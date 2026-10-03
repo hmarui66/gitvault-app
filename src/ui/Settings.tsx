@@ -1,0 +1,123 @@
+import { useState } from 'preact/hooks';
+import { deleteDatabase, type Config } from '../lib/db';
+import { GitHub } from '../lib/github';
+
+interface Props {
+  initial: Config | null;
+  dirtyCount: number;
+  onSave: (cfg: Config) => Promise<void>;
+  onClose?: () => void;
+}
+
+const DELAYS = [
+  { v: 30, label: '30秒' },
+  { v: 120, label: '2分（推奨）' },
+  { v: 300, label: '5分' },
+  { v: 0, label: '自動同期しない（アプリ離脱時と手動のみ）' },
+];
+
+export function Settings({ initial, dirtyCount, onSave, onClose }: Props) {
+  const [cfg, setCfg] = useState<Config>(
+    initial ?? { owner: '', repo: '', branch: 'main', token: '', deviceName: 'Pixel', autoSyncDelaySec: 120 },
+  );
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const field = (key: keyof Config) => ({
+    value: String(cfg[key]),
+    onInput: (e: Event) => setCfg({ ...cfg, [key]: (e.target as HTMLInputElement).value.trim() }),
+  });
+
+  const repoChanged = !!initial && (initial.owner !== cfg.owner || initial.repo !== cfg.repo || initial.branch !== cfg.branch);
+
+  const save = async (e: Event) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const info = await new GitHub(cfg).checkRepo();
+      if (!info.canPush) throw new Error('このトークンにはリポジトリへの書き込み権限がありません');
+      if (repoChanged) {
+        const warn = dirtyCount > 0 ? `\n未同期の変更 ${dirtyCount} 件は失われます。` : '';
+        if (!confirm(`リポジトリを切り替えると、この端末のノートを削除して取り込み直します。${warn}`)) return;
+        await deleteDatabase();
+      }
+      await onSave(cfg);
+      if (repoChanged) location.reload();
+      setMsg({ kind: 'ok', text: '保存しました' });
+    } catch (err) {
+      setMsg({ kind: 'err', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    const warn = dirtyCount > 0 ? `未同期の変更 ${dirtyCount} 件も失われます。` : '';
+    if (!confirm(`この端末のノートと設定をすべて削除します。${warn}GitHub 上のデータは消えません。`)) return;
+    await deleteDatabase();
+    location.reload();
+  };
+
+  return (
+    <div class="settings">
+      <header class="settings-head">
+        <h2>{initial ? '設定' : 'GitVault のセットアップ'}</h2>
+        {onClose && (
+          <button class="icon" onClick={onClose} aria-label="閉じる">
+            ✕
+          </button>
+        )}
+      </header>
+      <form onSubmit={save}>
+        <label>
+          オーナー
+          <input {...field('owner')} required autocapitalize="off" placeholder="your-name" />
+        </label>
+        <label>
+          リポジトリ
+          <input {...field('repo')} required autocapitalize="off" placeholder="notes" />
+        </label>
+        <label>
+          ブランチ
+          <input {...field('branch')} required autocapitalize="off" />
+        </label>
+        <label>
+          アクセストークン（Fine-grained PAT）
+          <input {...field('token')} required type="password" autocomplete="off" />
+          <small>
+            GitHub → Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを対象に
+            <b>Contents: Read and write</b> を付与して発行してください。トークンはこの端末の IndexedDB にのみ保存されます。
+          </small>
+        </label>
+        <label>
+          端末名（コミットメッセージ・競合コピー名に使用）
+          <input {...field('deviceName')} required />
+        </label>
+        <label>
+          自動同期（編集が止まってから）
+          <select
+            value={String(cfg.autoSyncDelaySec)}
+            onChange={(e) => setCfg({ ...cfg, autoSyncDelaySec: Number((e.target as HTMLSelectElement).value) })}
+          >
+            {DELAYS.map((d) => (
+              <option key={d.v} value={String(d.v)}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <small>入力内容は常に端末へ即時保存されます。ここで決めるのは GitHub へコミットするタイミングです。</small>
+        </label>
+        {msg && <p class={`msg ${msg.kind}`}>{msg.text}</p>}
+        <button class="primary" type="submit" disabled={busy}>
+          {busy ? '確認中…' : initial ? '保存' : '接続して取り込む'}
+        </button>
+      </form>
+      {initial && (
+        <button class="danger" onClick={reset}>
+          この端末のデータを消去
+        </button>
+      )}
+    </div>
+  );
+}
