@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { setConfig as saveConfig, type Config } from '../lib/db';
 import { normalizeNotePath, noteTitle } from '../lib/paths';
+import { DEFAULT_DAILY_TEMPLATE, dailySettings, formatDate, renderTemplate } from '../lib/template';
 import type { SyncController, SyncView } from '../lib/syncController';
 import { vault } from '../lib/vault';
 import { Editor } from './Editor';
@@ -149,10 +150,16 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
   };
 
   const daily = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    void create(`Daily/${ymd}.md`, `# ${ymd}\n\n`);
+    const { folder, format, templatePath } = dailySettings(config);
+    const date = new Date();
+    const name = formatDate(date, format);
+    const path = normalizeNotePath(folder ? `${folder}/${name}` : name);
+    const template = vault.read(normalizeNotePath(templatePath)) ?? '# {{title}}\n\n';
+    void create(path, renderTemplate(template, { title: noteTitle(path), date }));
+  };
+
+  const editDailyTemplate = () => {
+    void create(normalizeNotePath(dailySettings(config).templatePath), DEFAULT_DAILY_TEMPLATE);
   };
 
   const rename = async () => {
@@ -212,6 +219,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
             <button onClick={() => (setMenu(false), setSwitcher(true))}>🔎 ノートを開く</button>
             <button onClick={() => (setMenu(false), newNote(''))}>＋ 新規ノート</button>
             <button onClick={() => (setMenu(false), daily())}>📅 今日のノート</button>
+            <button onClick={() => (setMenu(false), editDailyTemplate())}>📝 デイリーテンプレートを編集</button>
             {exists && <button onClick={rename}>✎ 名前を変更 / 移動</button>}
             {exists && (
               <button class="danger" onClick={remove}>

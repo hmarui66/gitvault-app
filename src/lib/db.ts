@@ -25,6 +25,10 @@ export interface Config {
   deviceName: string;
   /** Seconds of editing inactivity before an automatic sync. 0 = manual / on-leave only. */
   autoSyncDelaySec: number;
+  /** Daily notes: folder, file name format (moment-style tokens), and template note path. */
+  dailyFolder?: string;
+  dailyFormat?: string;
+  dailyTemplatePath?: string;
 }
 
 export interface SyncState {

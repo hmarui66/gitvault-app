@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { deleteDatabase, type Config } from '../lib/db';
 import { GitHub } from '../lib/github';
+import { dailySettings } from '../lib/template';
 
 interface Props {
   initial: Config | null;
@@ -17,26 +18,32 @@ const DELAYS = [
 ];
 
 export function Settings({ initial, dirtyCount, onSave, onClose }: Props) {
-  const [cfg, setCfg] = useState<Config>(
-    initial ?? { owner: '', repo: '', branch: 'main', token: '', deviceName: 'Pixel', autoSyncDelaySec: 120 },
-  );
+  const [cfg, setCfg] = useState<Config>(() => {
+    const base = initial ?? { owner: '', repo: '', branch: 'main', token: '', deviceName: 'Pixel', autoSyncDelaySec: 120 };
+    const d = dailySettings(base);
+    return { ...base, dailyFolder: d.folder, dailyFormat: d.format, dailyTemplatePath: d.templatePath };
+  });
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const field = (key: keyof Config) => ({
-    value: String(cfg[key]),
+    value: String(cfg[key] ?? ''),
     onInput: (e: Event) => setCfg({ ...cfg, [key]: (e.target as HTMLInputElement).value.trim() }),
   });
 
   const repoChanged = !!initial && (initial.owner !== cfg.owner || initial.repo !== cfg.repo || initial.branch !== cfg.branch);
+  const connectionChanged = !initial || repoChanged || initial.token !== cfg.token;
 
   const save = async (e: Event) => {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
     try {
-      const info = await new GitHub(cfg).checkRepo();
-      if (!info.canPush) throw new Error('このトークンにはリポジトリへの書き込み権限がありません');
+      // Only re-verify GitHub access when it could have changed, so other settings can be saved offline.
+      if (connectionChanged) {
+        const info = await new GitHub(cfg).checkRepo();
+        if (!info.canPush) throw new Error('このトークンにはリポジトリへの書き込み権限がありません');
+      }
       if (repoChanged) {
         const warn = dirtyCount > 0 ? `\n未同期の変更 ${dirtyCount} 件は失われます。` : '';
         if (!confirm(`リポジトリを切り替えると、この端末のノートを削除して取り込み直します。${warn}`)) return;
@@ -108,6 +115,27 @@ export function Settings({ initial, dirtyCount, onSave, onClose }: Props) {
           </select>
           <small>入力内容は常に端末へ即時保存されます。ここで決めるのは GitHub へコミットするタイミングです。</small>
         </label>
+        <fieldset>
+          <legend>デイリーノート</legend>
+          <label>
+            フォルダ（空欄でルート）
+            <input {...field('dailyFolder')} autocapitalize="off" placeholder="Daily" />
+          </label>
+          <label>
+            ファイル名の形式
+            <input {...field('dailyFormat')} autocapitalize="off" placeholder="YYYY-MM-DD" />
+          </label>
+          <label>
+            テンプレートのノート
+            <input {...field('dailyTemplatePath')} autocapitalize="off" placeholder="Templates/Daily.md" />
+            <small>
+              テンプレートは普通のノートとして同期されます（メニューの「デイリーテンプレートを編集」から作成・編集）。
+              使える変数: <code>{'{{title}}'}</code> <code>{'{{date}}'}</code> <code>{'{{time}}'}</code>{' '}
+              <code>{'{{date:YYYY年M月D日 (ddd)}}'}</code>。書式は YYYY / MM / M / DD / D / HH / mm / ddd（月）/ dddd（月曜日）、
+              <code>[文字]</code> はそのまま出力。
+            </small>
+          </label>
+        </fieldset>
         {msg && <p class={`msg ${msg.kind}`}>{msg.text}</p>}
         <button class="primary" type="submit" disabled={busy}>
           {busy ? '確認中…' : initial ? '保存' : '接続して取り込む'}
