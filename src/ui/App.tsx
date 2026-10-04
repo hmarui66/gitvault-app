@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { setConfig as saveConfig, type Config } from '../lib/db';
+import { planImport } from '../lib/importer';
 import { normalizeNotePath, noteTitle } from '../lib/paths';
 import { DEFAULT_DAILY_TEMPLATE, dailySettings, formatDate, renderTemplate } from '../lib/template';
 import type { SyncController, SyncView } from '../lib/syncController';
@@ -84,6 +85,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
   const [settings, setSettings] = useState(false);
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   const version = useVaultVersion();
   const syncView = useSyncView(sync);
 
@@ -162,6 +164,25 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
     void create(normalizeNotePath(dailySettings(config).templatePath), DEFAULT_DAILY_TEMPLATE);
   };
 
+  const importFolder = async (files: File[]) => {
+    if (!files.length) return;
+    const plan = await planImport(files, (p) => vault.read(p));
+    const flat = files.every((f) => !f.webkitRelativePath);
+    const lines = [
+      `新規 ${plan.added.length} 件`,
+      plan.changed.length ? `内容が異なる既存ノート ${plan.changed.length} 件（上書き）` : '',
+      plan.unchanged ? `同一のため省略 ${plan.unchanged} 件` : '',
+      plan.skipped ? `対象外（添付・設定など）${plan.skipped} 件` : '',
+      flat ? '\n※ フォルダ構成が取得できなかったため、すべてルートに置かれます' : '',
+    ].filter(Boolean);
+    const items = [...plan.added, ...plan.changed];
+    if (!items.length) return setToast(`取り込むノートはありません（${lines.join(' / ')}）`);
+    if (!confirm(`取り込み内容:\n${lines.join('\n')}\n\n取り込んで GitHub に同期しますか？`)) return;
+    await vault.importNotes(items);
+    setToast(`${items.length} 件を取り込みました。同期します`);
+    void sync.sync();
+  };
+
   const rename = async () => {
     setMenu(false);
     if (!path) return;
@@ -220,6 +241,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
             <button onClick={() => (setMenu(false), newNote(''))}>＋ 新規ノート</button>
             <button onClick={() => (setMenu(false), daily())}>📅 今日のノート</button>
             <button onClick={() => (setMenu(false), editDailyTemplate())}>📝 デイリーテンプレートを編集</button>
+            <button onClick={() => (setMenu(false), importInput.current?.click())}>📥 フォルダから取り込む</button>
             {exists && <button onClick={rename}>✎ 名前を変更 / 移動</button>}
             {exists && (
               <button class="danger" onClick={remove}>
@@ -269,6 +291,23 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
           repoLabel={`${config.owner}/${config.repo}@${config.branch}`}
         />
       </aside>
+
+      <input
+        type="file"
+        multiple
+        hidden
+        ref={(el) => {
+          importInput.current = el;
+          // Folder picking: a vault's subfolders arrive as webkitRelativePath.
+          if (el) el.webkitdirectory = true;
+        }}
+        onChange={(e) => {
+          const input = e.currentTarget as HTMLInputElement;
+          const files = [...(input.files ?? [])];
+          input.value = '';
+          void importFolder(files);
+        }}
+      />
 
       {switcher && <Switcher onOpen={open} onCreate={(p) => void create(p)} onClose={() => setSwitcher(false)} />}
       {toast && (

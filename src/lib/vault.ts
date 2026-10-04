@@ -171,6 +171,13 @@ export class Vault {
     this.emit({ type: 'changed' });
   }
 
+  /** Write many notes at once (overwriting), then refresh; the next sync pushes them as one commit. */
+  async importNotes(items: { path: string; content: string }[]): Promise<void> {
+    await this.flush();
+    for (const item of items) await writeFile(item.path, item.content);
+    await this.load();
+  }
+
   async rename(from: string, to: string): Promise<void> {
     const content = this.read(from);
     if (content === undefined || from === to) return;

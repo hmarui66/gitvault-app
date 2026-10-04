@@ -54,4 +54,15 @@ describe('Vault', () => {
     await v.load();
     expect(v.read('a.md')).toBe('typing');
   });
+
+  it('imports many notes at once, overwriting existing ones', async () => {
+    await v.create('a.md', 'old');
+    await v.importNotes([
+      { path: 'a.md', content: 'new' },
+      { path: 'dir/b.md', content: 'B' },
+    ]);
+    expect(v.paths()).toEqual(['a.md', 'dir/b.md']);
+    expect(await stored('a.md')).toBe('new');
+    expect(v.dirtyCount).toBe(2);
+  });
 });
