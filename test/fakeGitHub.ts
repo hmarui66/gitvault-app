@@ -33,6 +33,10 @@ export class FakeGitHub implements GitHubLike {
     return sha ? this.blobs.get(sha) : undefined;
   }
 
+  get stats() {
+    return { requests: this.calls.length, bytes: 0 };
+  }
+
   get commitCount(): number {
     let n = 0;
     for (let c = this.head; c; c = this.commits.get(c)!.parents[0] ?? null) n++;

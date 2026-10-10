@@ -13,6 +13,8 @@ export interface RemoteBlob {
 
 /** The subset of the GitHub Git Data API that sync needs. */
 export interface GitHubLike {
+  /** Request count and approximate payload bytes (uncompressed JSON), for metrics. */
+  readonly stats?: { requests: number; bytes: number };
   getHead(): Promise<Head>;
   /** Create the first commit in an empty repository; returns its sha. */
   initEmpty(): Promise<string>;
@@ -53,6 +55,7 @@ function base64ToText(b64: string): string {
 
 export class GitHub implements GitHubLike {
   private readonly fetchImpl: typeof fetch;
+  readonly stats = { requests: 0, bytes: 0 };
 
   constructor(
     private readonly cfg: { owner: string; repo: string; branch: string; token: string },
@@ -66,6 +69,9 @@ export class GitHub implements GitHubLike {
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    this.stats.requests++;
+    this.stats.bytes += payload?.length ?? 0;
     const res = await this.fetchImpl(`${API}/repos/${this.cfg.owner}/${this.cfg.repo}${path}`, {
       method,
       headers: {
@@ -74,20 +80,22 @@ export class GitHub implements GitHubLike {
         'X-GitHub-Api-Version': '2022-11-28',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: payload,
       // The branch head must never come from the HTTP cache.
       cache: 'no-store',
     });
+    const text = await res.text();
+    this.stats.bytes += text.length;
     if (!res.ok) {
       let message = res.statusText;
       try {
-        message = ((await res.json()) as { message?: string }).message ?? message;
+        message = (JSON.parse(text) as { message?: string }).message ?? message;
       } catch {
         // non-JSON error body
       }
       throw new GitHubError(res.status, message);
     }
-    return (res.status === 204 ? undefined : await res.json()) as T;
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   /** Verifies the token can see the repo; returns its default branch. */

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { setConfig as saveConfig, type Config } from '../lib/db';
 import { planImport } from '../lib/importer';
+import { record } from '../lib/metrics';
 import { normalizeNotePath, noteTitle } from '../lib/paths';
 import { DEFAULT_DAILY_TEMPLATE, dailySettings, formatDate, renderTemplate } from '../lib/template';
 import type { SyncController, SyncView } from '../lib/syncController';
 import { vault } from '../lib/vault';
 import { Editor } from './Editor';
+import { Metrics } from './Metrics';
 import { Preview } from './Preview';
 import { Settings } from './Settings';
 import { Sidebar } from './Sidebar';
@@ -83,6 +85,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
   const [drawer, setDrawer] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [metrics, setMetrics] = useState(false);
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -126,21 +129,27 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
           setConfig(cfg);
           setSettings(false);
           if (first) await sync.start();
-          else void sync.sync();
+          else void sync.sync('settings');
         }}
       />
     );
   }
 
+  if (metrics) return <Metrics onClose={() => setMetrics(false)} />;
+
   const open = (p: string) => {
+    if (p !== path) record('note.open');
     navigate(p);
     setPath(p);
     setDrawer(false);
     setSwitcher(false);
   };
 
-  const create = async (p: string, content = '') => {
-    if (!vault.has(p)) await vault.create(p, content);
+  const create = async (p: string, content = '', kind = 'note.create') => {
+    if (!vault.has(p)) {
+      await vault.create(p, content);
+      record(kind);
+    }
     open(p);
     setMode('edit');
     void sync.noteEdited();
@@ -157,7 +166,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
     const name = formatDate(date, format);
     const path = normalizeNotePath(folder ? `${folder}/${name}` : name);
     const template = vault.read(normalizeNotePath(templatePath)) ?? '# {{title}}\n\n';
-    void create(path, renderTemplate(template, { title: noteTitle(path), date }));
+    void create(path, renderTemplate(template, { title: noteTitle(path), date }), 'note.daily');
   };
 
   const editDailyTemplate = () => {
@@ -178,9 +187,14 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
     const items = [...plan.added, ...plan.changed];
     if (!items.length) return setToast(`取り込むノートはありません（${lines.join(' / ')}）`);
     if (!confirm(`取り込み内容:\n${lines.join('\n')}\n\n取り込んで GitHub に同期しますか？`)) return;
+    const started = performance.now();
     await vault.importNotes(items);
+    record('note.import', {
+      ms: performance.now() - started,
+      attrs: { added: plan.added.length, overwritten: plan.changed.length, skipped: plan.skipped, flat: flat ? 1 : 0 },
+    });
     setToast(`${items.length} 件を取り込みました。同期します`);
-    void sync.sync();
+    void sync.sync('import');
   };
 
   const rename = async () => {
@@ -192,6 +206,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
     if (to === path) return;
     if (vault.has(to)) return alert('同じ名前のノートがあります');
     await vault.rename(path, to);
+    record('note.rename');
     navigate(to, true);
     setPath(to);
     void sync.noteEdited();
@@ -201,6 +216,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
     setMenu(false);
     if (!path || !confirm(`「${noteTitle(path)}」を削除しますか？`)) return;
     await vault.remove(path);
+    record('note.delete');
     history.replaceState(null, '', '#');
     setPath(null);
     void sync.noteEdited();
@@ -223,7 +239,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
         <h1 class="title" onClick={() => exists && void rename()}>
           {exists ? noteTitle(path) : 'GitVault'}
         </h1>
-        <SyncChip view={syncView} dirty={vault.dirtyCount} onClick={() => void sync.sync()} />
+        <SyncChip view={syncView} dirty={vault.dirtyCount} onClick={() => void sync.sync('manual')} />
         {exists && (
           <button class="icon" onClick={toggleMode} aria-label={mode === 'edit' ? '閲覧モード' : '編集モード'}>
             {mode === 'edit' ? '👁' : '✎'}
@@ -248,7 +264,8 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
                 🗑 削除
               </button>
             )}
-            <button onClick={() => (setMenu(false), void sync.sync())}>⟳ 今すぐ同期</button>
+            <button onClick={() => (setMenu(false), void sync.sync('manual'))}>⟳ 今すぐ同期</button>
+            <button onClick={() => (setMenu(false), setMetrics(true))}>📊 メトリクス</button>
             <button onClick={() => (setMenu(false), setSettings(true))}>⚙ 設定</button>
             {syncView.lastError && <p class="menu-error">最後のエラー: {syncView.lastError}</p>}
           </div>

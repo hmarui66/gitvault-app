@@ -7,7 +7,8 @@
  * If the page cannot finish (offline, killed), Background Sync lets the service worker retry.
  */
 import { getConfig, getSyncState } from './db';
-import { BG_SYNC_TAG, runSync, SYNC_CHANNEL, type SyncMessage, type SyncResult } from './sync';
+import { flushMetrics, record } from './metrics';
+import { BG_SYNC_TAG, runSync, SYNC_CHANNEL, type SyncMessage, type SyncResult, type SyncTrigger } from './sync';
 import type { Vault } from './vault';
 
 const RESUME_PULL_INTERVAL_MS = 30_000;
@@ -50,9 +51,9 @@ export class SyncController {
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') void this.onHidden();
-      else if (Date.now() - (this.view.lastSyncAt ?? 0) > RESUME_PULL_INTERVAL_MS) void this.sync();
+      else if (Date.now() - (this.view.lastSyncAt ?? 0) > RESUME_PULL_INTERVAL_MS) void this.sync('resume');
     });
-    window.addEventListener('online', () => void this.sync());
+    window.addEventListener('online', () => void this.sync('online'));
     window.addEventListener('offline', () => this.set({ status: 'offline' }));
 
     // The service worker (or another tab) may sync on our behalf.
@@ -64,20 +65,21 @@ export class SyncController {
       }
     });
 
-    void this.sync();
+    void this.sync('startup');
   }
 
   /** Called on every edit: (re)arm the idle timer. */
   async noteEdited(): Promise<void> {
     clearTimeout(this.timer);
     const delay = (await getConfig())?.autoSyncDelaySec ?? 0;
-    if (delay > 0) this.timer = setTimeout(() => void this.sync(), delay * 1000);
+    if (delay > 0) this.timer = setTimeout(() => void this.sync('idle'), delay * 1000);
   }
 
-  async sync(): Promise<void> {
+  async sync(trigger: SyncTrigger = 'manual'): Promise<void> {
     clearTimeout(this.timer);
     if (!navigator.onLine) {
       this.set({ status: 'offline' });
+      record('sync.deferred', { attrs: { trigger, reason: 'offline', pending: this.vault.dirtyCount } });
       if (this.vault.dirtyCount > 0) void this.requestBackgroundSync();
       return;
     }
@@ -89,7 +91,7 @@ export class SyncController {
     this.set({ status: 'syncing' });
     try {
       await this.vault.flush();
-      const result = await runSync();
+      const result = await runSync({ trigger });
       await this.vault.load();
       this.set({ status: 'idle', lastSyncAt: Date.now(), lastError: null, lastResult: result });
       if (result.incomplete) this.again = true;
@@ -101,24 +103,27 @@ export class SyncController {
       this.running = false;
       if (this.again) {
         this.again = false;
-        void this.sync();
+        void this.sync('retry');
       }
     }
   }
 
   private async onHidden(): Promise<void> {
     await this.vault.flush();
+    void flushMetrics();
     if (this.vault.dirtyCount === 0) return;
     // Register first: if the browser freezes us mid-request, the service worker finishes the job.
     // If our own sync completes, the background run finds nothing to do.
     await this.requestBackgroundSync();
-    void this.sync();
+    void this.sync('hidden');
   }
 
   private async requestBackgroundSync(): Promise<void> {
     try {
       const reg = (await navigator.serviceWorker?.ready) as SyncRegistration | undefined;
-      await reg?.sync?.register(BG_SYNC_TAG);
+      if (!reg?.sync) return;
+      await reg.sync.register(BG_SYNC_TAG);
+      record('bgsync.register', { attrs: { pending: this.vault.dirtyCount } });
     } catch {
       // Background Sync unsupported or denied; the next foreground trigger will sync.
     }

@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { deleteDatabase, type Config } from '../lib/db';
 import { GitHub } from '../lib/github';
+import { deleteMetricsDatabase } from '../lib/metrics';
 import { dailySettings } from '../lib/template';
 
 interface Props {
@@ -63,6 +64,7 @@ export function Settings({ initial, dirtyCount, onSave, onClose }: Props) {
     const warn = dirtyCount > 0 ? `未同期の変更 ${dirtyCount} 件も失われます。` : '';
     if (!confirm(`この端末のノートと設定をすべて削除します。${warn}GitHub 上のデータは消えません。`)) return;
     await deleteDatabase();
+    await deleteMetricsDatabase();
     location.reload();
   };
 

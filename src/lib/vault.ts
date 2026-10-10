@@ -5,6 +5,7 @@
 import { getDB, removeFile, writeFile } from './db';
 import { gitBlobSha } from './gitBlob';
 import { merge3 } from './merge';
+import { record } from './metrics';
 import { conflictCopyPath, isSyncable } from './paths';
 
 const PERSIST_DELAY_MS = 400;
@@ -112,7 +113,9 @@ export class Vault {
     const note = this.notes.get(path);
     if (!note) return;
     const content = note.content;
+    const started = performance.now();
     const res = await writeFile(path, content, note.rev);
+    record('note.save', { ms: performance.now() - started, ok: res.ok });
     if (res.ok) {
       note.rev = res.rev;
       note.persisted = content;

@@ -25,5 +25,5 @@ self.addEventListener('sync', (event) => {
   const e = event as SyncEvent;
   if (e.tag !== BG_SYNC_TAG) return;
   // Rejecting makes the browser retry later with backoff.
-  e.waitUntil(runSync().then(() => undefined));
+  e.waitUntil(runSync({ trigger: 'background' }).then(() => undefined));
 });

@@ -12,6 +12,7 @@ import { getConfig, getDB, getSyncState, setSyncState, type BaseRec, type Config
 import { gitBlobSha } from './gitBlob';
 import { GitHub, NonFastForwardError, type GitHubLike, type TreeEntry } from './github';
 import { merge3 } from './merge';
+import { flushMetrics, record } from './metrics';
 import { conflictCopyPath, isSyncable } from './paths';
 
 export const SYNC_CHANNEL = 'gitvault';
@@ -77,9 +78,13 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out;
 }
 
+/** What started a sync; recorded in metrics. */
+export type SyncTrigger = 'startup' | 'idle' | 'hidden' | 'resume' | 'online' | 'manual' | 'import' | 'settings' | 'retry' | 'background';
+
 export interface SyncOptions {
   github?: GitHubLike;
   now?: () => Date;
+  trigger?: SyncTrigger;
 }
 
 /** Run one full sync (pull + push in a single commit). Serialized across tabs and the service worker. */
@@ -89,10 +94,30 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncResult> {
     if (!cfg) throw new Error('Not configured');
     const gh = opts.github ?? new GitHub(cfg);
     const now = opts.now ?? (() => new Date());
+    const trigger = opts.trigger ?? 'manual';
+    const started = performance.now();
+    const before = { requests: gh.stats?.requests ?? 0, bytes: gh.stats?.bytes ?? 0 };
+    const traffic = () => ({
+      requests: (gh.stats?.requests ?? 0) - before.requests,
+      bytes: (gh.stats?.bytes ?? 0) - before.bytes,
+    });
     for (let attempt = 0; ; attempt++) {
       try {
         const result = await syncOnce(gh, cfg, now);
         await setSyncState({ lastSyncAt: Date.now(), lastError: null });
+        record('sync', {
+          ms: performance.now() - started,
+          ok: true,
+          attrs: {
+            trigger,
+            pulled: result.pulled.length,
+            pushed: result.pushed.length,
+            conflicts: result.conflicts.length,
+            retries: attempt,
+            ...traffic(),
+          },
+        });
+        await flushMetrics(); // the service worker may be stopped right after this
         broadcast({ type: 'synced', result });
         return result;
       } catch (e) {
@@ -100,6 +125,8 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncResult> {
         if (e instanceof NonFastForwardError && attempt < 3) continue;
         const message = e instanceof Error ? e.message : String(e);
         await setSyncState({ lastError: message });
+        record('sync', { ms: performance.now() - started, ok: false, attrs: { trigger, error: message.slice(0, 120), ...traffic() } });
+        await flushMetrics();
         broadcast({ type: 'sync-error', message });
         throw e;
       }

@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getDB, getSyncState, removeFile, deleteDatabase, setConfig, writeFile } from '../src/lib/db';
+import { clearMetrics, recentEvents } from '../src/lib/metrics';
 import { runSync } from '../src/lib/sync';
 import { FakeGitHub } from './fakeGitHub';
 
@@ -162,5 +163,14 @@ describe('sync', () => {
     await sync();
     expect(gh.calls).toContain('createRef');
     expect(await gh.read('first.md')).toBe('hello\n');
+  });
+
+  it('records a metric per sync with its trigger and traffic', async () => {
+    await clearMetrics();
+    await gh.commitFiles({ 'a.md': 'A\n' });
+    await runSync({ github: gh, now, trigger: 'hidden' });
+    const [e] = await recentEvents(1);
+    expect(e).toMatchObject({ name: 'sync', ok: true, attrs: { trigger: 'hidden', pulled: 1, pushed: 0 } });
+    expect(e.attrs!.requests).toBeGreaterThan(0);
   });
 });
