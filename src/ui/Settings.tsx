@@ -3,6 +3,7 @@ import { deleteDatabase, type Config } from '../lib/db';
 import { GitHub } from '../lib/github';
 import { deleteMetricsDatabase } from '../lib/metrics';
 import { dailySettings } from '../lib/template';
+import { TOKEN_WARN_DAYS } from '../lib/token';
 
 interface Props {
   initial: Config | null;
@@ -97,6 +98,18 @@ export function Settings({ initial, dirtyCount, onSave, onClose }: Props) {
           <small>
             GitHub → Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを対象に
             <b>Contents: Read and write</b> を付与して発行してください。トークンはこの端末の IndexedDB にのみ保存されます。
+          </small>
+        </label>
+        <label>
+          トークンの有効期限（任意）
+          <input
+            type="date"
+            value={cfg.tokenExpiresOn ?? ''}
+            onInput={(e) => setCfg({ ...cfg, tokenExpiresOn: (e.target as HTMLInputElement).value || undefined })}
+          />
+          <small>
+            トークン発行時に表示される期限（Fine-grained tokens の一覧にも表示）を入力すると、{TOKEN_WARN_DAYS} 日前から起動時に警告します。
+            GitHub はこの期限をブラウザに渡さないため、自動では取得できません。トークンを更新したら、この日付も更新してください。
           </small>
         </label>
         <label>

@@ -7,13 +7,15 @@
  * If the page cannot finish (offline, killed), Background Sync lets the service worker retry.
  */
 import { getConfig, getSyncState } from './db';
+import { GitHubError } from './github';
 import { flushMetrics, record } from './metrics';
 import { BG_SYNC_TAG, runSync, SYNC_CHANNEL, type SyncMessage, type SyncResult, type SyncTrigger } from './sync';
 import type { Vault } from './vault';
 
 const RESUME_PULL_INTERVAL_MS = 30_000;
 
-export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error';
+/** `auth`: GitHub rejected the token (expired or revoked). */
+export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error' | 'auth';
 
 export interface SyncView {
   status: SyncStatus;
@@ -96,8 +98,9 @@ export class SyncController {
       this.set({ status: 'idle', lastSyncAt: Date.now(), lastError: null, lastResult: result });
       if (result.incomplete) this.again = true;
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      this.set({ status: navigator.onLine ? 'error' : 'offline', lastError: message });
+      const auth = e instanceof GitHubError && e.status === 401;
+      const message = auth ? 'トークンが無効か期限切れです。設定で新しいトークンに更新してください' : e instanceof Error ? e.message : String(e);
+      this.set({ status: auth ? 'auth' : navigator.onLine ? 'error' : 'offline', lastError: message });
       if (this.vault.dirtyCount > 0) void this.requestBackgroundSync();
     } finally {
       this.running = false;

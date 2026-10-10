@@ -207,3 +207,9 @@ input, select { font: inherit; color: var(--fg); }
 .events li.bad .ev-desc { color: var(--danger); }
 .retention { font-size: 13px; color: var(--muted); line-height: 1.6; }
 .metrics > .danger { margin-top: 16px; }
+
+/* --- token expiry banner ---------------------------------------------- */
+.token-banner { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; background: color-mix(in srgb, var(--warn) 16%, var(--bg)); border-bottom: 1px solid var(--border); }
+.token-banner.urgent { background: color-mix(in srgb, var(--danger) 16%, var(--bg)); }
+.token-banner-text { flex: 1; text-align: left; font-size: 14px; padding: 8px 0; line-height: 1.4; }
+.token-banner-link { display: block; font-size: 12px; color: var(--accent); margin-top: 2px; }

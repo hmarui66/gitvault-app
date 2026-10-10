@@ -29,6 +29,8 @@ export interface Config {
   dailyFolder?: string;
   dailyFormat?: string;
   dailyTemplatePath?: string;
+  /** Token expiry date ("YYYY-MM-DD") as shown by GitHub, for advance warnings. */
+  tokenExpiresOn?: string;
 }
 
 export interface SyncState {

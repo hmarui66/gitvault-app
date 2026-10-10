@@ -3,6 +3,7 @@ import { setConfig as saveConfig, type Config } from '../lib/db';
 import { planImport } from '../lib/importer';
 import { record } from '../lib/metrics';
 import { normalizeNotePath, noteTitle } from '../lib/paths';
+import { tokenStatus } from '../lib/token';
 import { DEFAULT_DAILY_TEMPLATE, dailySettings, formatDate, renderTemplate } from '../lib/template';
 import type { SyncController, SyncView } from '../lib/syncController';
 import { vault } from '../lib/vault';
@@ -70,11 +71,44 @@ function SyncChip({ view, dirty, onClick }: { view: SyncView; dirty: number; onC
   if (view.status === 'syncing') [cls, text] = ['busy', '⟳ 同期中'];
   else if (view.status === 'offline') [cls, text] = ['off', dirty ? `オフライン · ${dirty}件待機` : 'オフライン'];
   else if (view.status === 'error') [cls, text] = ['err', '⚠ 同期エラー'];
+  else if (view.status === 'auth') [cls, text] = ['err', '⚠ 要トークン更新'];
   else if (dirty) [cls, text] = ['pending', `● ${dirty}件未同期`];
   return (
     <button class={`chip ${cls}`} onClick={onClick} title={view.lastError ?? '今すぐ同期'}>
       {text}
     </button>
+  );
+}
+
+/** Shown on every launch while the token is close to (or past) expiry, or after GitHub rejected it. */
+function TokenBanner(props: {
+  expiresOn: string | undefined;
+  authFailed: boolean;
+  closed: boolean;
+  onOpenSettings: () => void;
+  onClose: () => void;
+}) {
+  const status = tokenStatus(props.expiresOn);
+  let text: string | null = null;
+  if (props.authFailed) text = 'GitHub がトークンを拒否しました（期限切れか無効）。新しいトークンを設定してください';
+  else if (status.kind === 'expired') text = 'トークンの有効期限が切れています。新しいトークンを設定してください';
+  else if (status.kind === 'soon')
+    text = status.days === 0 ? 'トークンの有効期限は今日までです' : `トークンの有効期限まであと ${status.days} 日です`;
+  // An auth failure cannot be dismissed: nothing syncs until the token is replaced.
+  if (!text || (props.closed && !props.authFailed)) return null;
+  const urgent = props.authFailed || status.kind === 'expired';
+  return (
+    <div class={`token-banner${urgent ? ' urgent' : ''}`}>
+      <button class="token-banner-text" onClick={props.onOpenSettings}>
+        {text}
+        <span class="token-banner-link">設定を開く ›</span>
+      </button>
+      {!props.authFailed && (
+        <button class="icon" onClick={props.onClose} aria-label="閉じる">
+          ✕
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -86,6 +120,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
   const [switcher, setSwitcher] = useState(false);
   const [settings, setSettings] = useState(false);
   const [metrics, setMetrics] = useState(false);
+  const [tokenBannerClosed, setTokenBannerClosed] = useState(false);
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -249,6 +284,14 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
           ⋮
         </button>
       </header>
+
+      <TokenBanner
+        expiresOn={config.tokenExpiresOn}
+        authFailed={syncView.status === 'auth'}
+        closed={tokenBannerClosed}
+        onOpenSettings={() => setSettings(true)}
+        onClose={() => setTokenBannerClosed(true)}
+      />
 
       {menu && (
         <div class="menu-backdrop" onClick={() => setMenu(false)}>
