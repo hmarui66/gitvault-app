@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { gitBlobSha } from '../src/lib/gitBlob';
 import { GitHub, NonFastForwardError } from '../src/lib/github';
 
 function mockFetch(handler: (url: string, init: RequestInit) => { status: number; body?: unknown }) {
@@ -32,6 +34,15 @@ describe('GitHub client', () => {
     const b64 = Buffer.from('日本語のノート\n').toString('base64').replace(/(.{8})/g, '$1\n');
     const { gh } = mockFetch(() => ({ status: 200, body: { content: b64, encoding: 'base64' } }));
     expect(await gh.getBlob('x')).toBe('日本語のノート\n');
+  });
+
+  it('keeps a BOM so the local hash matches the remote blob SHA', async () => {
+    const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# 見出し\r\n')]);
+    const remoteSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+    const { gh } = mockFetch(() => ({ status: 200, body: { content: bytes.toString('base64'), encoding: 'base64' } }));
+    const text = await gh.getBlob(remoteSha);
+    expect(text.startsWith('\uFEFF')).toBe(true);
+    expect(await gitBlobSha(text)).toBe(remoteSha);
   });
 
   it('sends inline content and sha:null deletions in one tree', async () => {

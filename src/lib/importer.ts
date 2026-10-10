@@ -1,5 +1,8 @@
 import { isSyncable } from './paths';
 
+// Same as the GitHub client: preserve a BOM so imported bytes are kept as-is.
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+
 export interface ImportItem {
   path: string;
   content: string;
@@ -33,7 +36,7 @@ export async function planImport(files: File[], existing: (path: string) => stri
       plan.skipped++;
       continue;
     }
-    const content = await file.text();
+    const content = decoder.decode(await file.arrayBuffer());
     const cur = existing(path);
     if (cur === undefined) plan.added.push({ path, content });
     else if (cur === content) plan.unchanged++;

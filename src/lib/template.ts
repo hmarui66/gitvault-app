@@ -50,7 +50,8 @@ export function formatDate(date: Date, format: string): string {
 }
 
 export function renderTemplate(template: string, vars: { title: string; date: Date }): string {
-  return template.replace(/\{\{\s*(title|date|time)\s*(?::([^}]*))?\}\}/g, (_m, name: string, format: string | undefined) => {
+  // A template saved with a BOM should not pass it on to every new note.
+  return template.replace(/^\uFEFF/, '').replace(/\{\{\s*(title|date|time)\s*(?::([^}]*))?\}\}/g, (_m, name: string, format: string | undefined) => {
     if (name === 'title') return vars.title;
     return formatDate(vars.date, format?.trim() || (name === 'date' ? DEFAULT_DATE_FORMAT : DEFAULT_TIME_FORMAT));
   });

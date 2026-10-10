@@ -21,6 +21,9 @@ describe('renderTemplate', () => {
     const tpl = '# {{title}}\n{{date}} {{time}}\n{{ date:YYYY年M月D日 }} {{time:H時}}';
     expect(renderTemplate(tpl, { title: '2026-10-04', date: d })).toBe('# 2026-10-04\n2026-10-04 09:05\n2026年10月4日 9時');
   });
+  it('does not copy a template BOM into new notes', () => {
+    expect(renderTemplate('\uFEFF# {{title}}', { title: 't', date: d })).toBe('# t');
+  });
   it('leaves unknown placeholders untouched', () => {
     expect(renderTemplate('{{weather}}', { title: 't', date: d })).toBe('{{weather}}');
   });

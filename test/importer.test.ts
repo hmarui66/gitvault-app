@@ -15,6 +15,11 @@ describe('vaultRelativePath', () => {
 });
 
 describe('planImport', () => {
+  it('keeps a BOM in imported notes', async () => {
+    const plan = await planImport([file('V/a.md', '\uFEFF# A')], () => undefined);
+    expect(plan.added[0].content).toBe('\uFEFF# A');
+  });
+
   it('classifies notes and skips what GitVault does not sync', async () => {
     const existing = new Map([
       ['same.md', 'S'],

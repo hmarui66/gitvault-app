@@ -44,7 +44,9 @@ export class NonFastForwardError extends Error {
 }
 
 const API = 'https://api.github.com';
-const decoder = new TextDecoder();
+// Keep a leading BOM: dropping it would change the bytes, so the local hash would no longer
+// match the remote blob SHA and the note would look locally modified.
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
 
 function base64ToText(b64: string): string {
   const bin = atob(b64.replace(/\s/g, ''));

@@ -53,7 +53,8 @@ export function createRenderer(paths: () => string[]): (src: string) => string {
     },
   });
   return (src) => {
-    const html = marked.parse(src, { async: false });
+    // A BOM kept for byte-exact sync would otherwise stop the first line from parsing (e.g. a heading).
+    const html = marked.parse(src.replace(/^\uFEFF/, ''), { async: false });
     return DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
   };
 }
