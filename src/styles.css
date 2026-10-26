@@ -213,3 +213,20 @@ input, select { font: inherit; color: var(--fg); }
 .token-banner.urgent { background: color-mix(in srgb, var(--danger) 16%, var(--bg)); }
 .token-banner-text { flex: 1; text-align: left; font-size: 14px; padding: 8px 0; line-height: 1.4; }
 .token-banner-link { display: block; font-size: 12px; color: var(--accent); margin-top: 2px; }
+
+/* --- blog export ------------------------------------------------------ */
+.blog-export { max-height: calc(100dvh - 24px); overflow-y: auto; padding: 4px 14px 14px; gap: 10px; }
+.blog-export h2 { font-size: 18px; margin: 8px 0; }
+.blog-form { display: flex; flex-direction: column; gap: 12px; }
+.blog-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.blog-form input:not([type=checkbox]), .blog-form textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-2); color: var(--fg); font: inherit; font-size: 15px;
+}
+.blog-form label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--fg); }
+.blog-form label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.blog-changes { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.blog-output { width: 100%; min-height: 34dvh; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--code-bg); color: var(--fg); font-family: var(--mono); font-size: 12px; line-height: 1.5; resize: vertical; }
+.blog-actions { display: flex; align-items: center; gap: 10px; }
+.blog-actions button:not(.primary) { padding: 12px 18px; border-radius: 12px; background: var(--bg-2); }
+.blog-actions button:disabled { opacity: 0.5; }
+.blog-note { font-size: 12px; color: var(--muted); }

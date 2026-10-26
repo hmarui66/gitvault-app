@@ -23,6 +23,7 @@ const LABELS: Record<string, string> = {
   'note.delete': '削除',
   'note.import': '取り込み',
   'note.save': '端末への保存',
+  'blog.export': 'ブログ記事に変換',
   sync: '同期',
   'sync.deferred': '同期の保留',
   'bgsync.register': 'バックグラウンド同期の予約',

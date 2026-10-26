@@ -7,6 +7,7 @@ import { tokenStatus } from '../lib/token';
 import { DEFAULT_DAILY_TEMPLATE, dailySettings, formatDate, renderTemplate } from '../lib/template';
 import type { SyncController, SyncView } from '../lib/syncController';
 import { vault } from '../lib/vault';
+import { BlogExport } from './BlogExport';
 import { Editor } from './Editor';
 import { Metrics } from './Metrics';
 import { Preview } from './Preview';
@@ -120,6 +121,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
   const [switcher, setSwitcher] = useState(false);
   const [settings, setSettings] = useState(false);
   const [metrics, setMetrics] = useState(false);
+  const [blogExport, setBlogExport] = useState(false);
   const [tokenBannerClosed, setTokenBannerClosed] = useState(false);
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -301,6 +303,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
             <button onClick={() => (setMenu(false), daily())}>📅 今日のノート</button>
             <button onClick={() => (setMenu(false), editDailyTemplate())}>📝 デイリーテンプレートを編集</button>
             <button onClick={() => (setMenu(false), importInput.current?.click())}>📥 フォルダから取り込む</button>
+            {exists && <button onClick={() => (setMenu(false), setBlogExport(true))}>📰 ブログ記事に変換</button>}
             {exists && <button onClick={rename}>✎ 名前を変更 / 移動</button>}
             {exists && (
               <button class="danger" onClick={remove}>
@@ -369,6 +372,7 @@ export function App({ initialConfig, sync }: { initialConfig: Config | null; syn
         }}
       />
 
+      {blogExport && exists && <BlogExport path={path} content={vault.read(path) ?? ''} onClose={() => setBlogExport(false)} />}
       {switcher && <Switcher onOpen={open} onCreate={(p) => void create(p)} onClose={() => setSwitcher(false)} />}
       {toast && (
         <div class="toast" onClick={() => setToast(null)}>

@@ -30,8 +30,10 @@
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "@types/dompurify": "^3.0.5",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.6.4",
     "fake-indexeddb": "^6.2.5",
+    "js-yaml": "^4.3.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vite-plugin-pwa": "^2.0.0",
